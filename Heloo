@@ -1,0 +1,806 @@
+-- THINHEZ TEST V8 HARDENED - TĂNG CƯỜNG TÍNH ỔN ĐỊNH KHỞI CHẠY
+-- Cập nhật: Khắc phục lỗi khởi tạo và lỗi truy cập dịch vụ sớm.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local Debris = game:GetService("Debris")
+
+-- *****************************************************************
+-- [HARDENED FIX 1] Đợi 1 giây để các service khởi tạo đầy đủ
+wait(1) 
+-- *****************************************************************
+
+local pl = Players.LocalPlayer
+local defaultGravity = Workspace.Gravity or 196.2
+local ch, hum, hrp
+local mouse = pl:GetMouse()
+
+-- [CÁC BIẾN CẤU HÌNH VÀ TRẠNG THÁI KHÔNG ĐỔI]
+
+local flySpeed = 50
+local runSpeed = 26
+local defaultWalkSpeed = 16
+local flingF = 5000
+local isFly, isRun, isGod, isNoClip, isFullBright, isNoGravity, isESP = false, false, false, false, false, false, false
+local isDeveloperMode = false 
+local isAIGodMode = false 
+local SECRET_KEY = "thinh099015"
+local espLoop = nil
+local BV, BG, flyConn = nil, nil, nil
+local buttons = {}
+local currentFunctions = {} 
+local espLines = {} 
+
+local deviceType = (UIS.TouchEnabled and not UIS.MouseEnabled) and "Mobile" or "PC"
+
+-- ===== FIX 1: KHỞI TẠO VÀ LẮNG NGHE NHÂN VẬT AN TOÀN (RESPAWN FIX) =====
+local function setupCharacter()
+    local success, result = pcall(function() -- [HARDENED FIX 2] Dùng pcall
+        ch = pl.Character or pl.CharacterAdded:Wait()
+        hum = ch:WaitForChild("Humanoid")
+        hrp = ch:WaitForChild("HumanoidRootPart")
+        
+        if isRun then hum.WalkSpeed = runSpeed end
+        if isGod then hum.MaxHealth = math.huge; hum.Health = hum.MaxHealth end
+        if isNoClip then
+            for _, v in pairs(ch:GetDescendants()) do
+                if v:IsA("BasePart") then v.CanCollide = false end
+            end
+        end
+        if isESP then currentFunctions.toggleESP() currentFunctions.toggleESP() end
+    end)
+    
+    if not success then
+        warn("Lỗi khởi tạo nhân vật (setupCharacter): " .. tostring(result))
+    end
+end
+
+pl.CharacterAdded:Connect(setupCharacter)
+setupCharacter() 
+
+-- ===== GUI SETUP (Phần này không thay đổi nhiều) =====
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "ThinhTestV8Compact"
+gui.Parent = pl:WaitForChild("PlayerGui")
+gui.ResetOnSpawn = false
+
+local function makeDraggable(frame)
+    local dragging, dragInput, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    RunService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "ToggleBtn"
+toggleBtn.Size = UDim2.new(0, 50, 0, 50)
+toggleBtn.Position = UDim2.new(0, 20, 0.4, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+toggleBtn.Text = "V8" 
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 20
+toggleBtn.Visible = true 
+toggleBtn.Parent = gui
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
+makeDraggable(toggleBtn)
+local stroke = Instance.new("UIStroke", toggleBtn)
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Thickness = 2
+
+local menu = Instance.new("Frame")
+menu.Name = "MainMenu"
+menu.Size = UDim2.new(0, 550, 0, 320)
+menu.Position = UDim2.new(0.5, -275, 0.5, -160)
+menu.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+menu.Visible = false
+menu.Parent = gui
+Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 12)
+makeDraggable(menu)
+
+toggleBtn.MouseButton1Click:Connect(function() 
+    menu.Visible = not menu.Visible 
+    if not menu.Visible and PlayerListFrame then PlayerListFrame.Visible = false end
+end)
+
+local title = Instance.new("TextLabel", menu)
+title.Size = UDim2.new(1, -40, 0, 30)
+title.Position = UDim2.new(0, 10, 0, 5)
+title.BackgroundTransparency = 1
+title.Text = "ThinhTest V8 AI AUTOCORRECT" 
+title.TextColor3 = Color3.fromRGB(0, 200, 255)
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextSize = 16
+
+local closeMini = Instance.new("TextButton", menu)
+closeMini.Size = UDim2.new(0, 25, 0, 25)
+closeMini.Position = UDim2.new(1, -30, 0, 5)
+closeMini.Text = "X"
+closeMini.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeMini.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", closeMini).CornerRadius = UDim.new(0, 6)
+closeMini.MouseButton1Click:Connect(function() 
+    menu.Visible = false 
+    if PlayerListFrame then PlayerListFrame.Visible = false end
+end)
+
+local statusBar = Instance.new("Frame", menu)
+statusBar.Size = UDim2.new(1, -20, 0, 25)
+statusBar.Position = UDim2.new(0, 10, 1, -30)
+statusBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Instance.new("UICorner", statusBar).CornerRadius = UDim.new(0, 6)
+
+local statusText = Instance.new("TextLabel", statusBar)
+statusText.Size = UDim2.new(1, -10, 1, 0)
+statusText.Position = UDim2.new(0, 5, 0, 0)
+statusText.BackgroundTransparency = 1
+statusText.TextColor3 = Color3.fromRGB(180, 180, 180)
+statusText.Font = Enum.Font.Code
+statusText.TextSize = 12
+statusText.TextXAlignment = Enum.TextXAlignment.Left
+
+RunService.RenderStepped:Connect(function()
+    local devStatus = isDeveloperMode and (isAIGodMode and "| AI GOD" or "| DEV ON") or ""
+    if menu.Visible and hrp then
+        local pos = hrp.Position
+        local x, y, z = math.floor(pos.X), math.floor(pos.Y), math.floor(pos.Z)
+        statusText.Text = string.format("User: %s | Device: %s | Pos: %d, %d, %d %s", pl.Name, deviceType, x, y, z, devStatus)
+    end
+end)
+
+local scroll = Instance.new("ScrollingFrame", menu)
+scroll.Size = UDim2.new(0.4, 0, 0.75, 0)
+scroll.Position = UDim2.new(0, 10, 0, 40)
+scroll.BackgroundTransparency = 1 
+scroll.ScrollBarThickness = 4
+local uiList = Instance.new("UIListLayout", scroll)
+uiList.Padding = UDim.new(0, 5)
+
+uiList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    scroll.CanvasSize = UDim2.new(0, 0, 0, uiList.AbsoluteContentSize.Y + 10)
+end)
+
+local function createBtn(text, func, parentFrame)
+    local btn = Instance.new("TextButton", parentFrame or scroll)
+    btn.Name = text:gsub("%W+", "")
+    btn.Size = UDim2.new(1, -5, 0, 30)
+    btn.Text = text
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    btn.TextSize = 14
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    buttons[text] = {btn = btn, state = false, func = func} 
+    
+    btn.MouseButton1Click:Connect(function()
+        local isActive = buttons[text].func()
+        buttons[text].state = isActive or false
+        if isActive == true then
+            btn.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+        elseif isActive == false then
+            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        end
+    end)
+    return btn
+end
+
+local aiFrame = Instance.new("Frame", menu)
+aiFrame.Size = UDim2.new(0.55, 0, 0.75, 0)
+aiFrame.Position = UDim2.new(0.43, 0, 0, 40)
+aiFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Instance.new("UICorner", aiFrame).CornerRadius = UDim.new(0, 8)
+
+local chatLog = Instance.new("ScrollingFrame", aiFrame)
+chatLog.Size = UDim2.new(1, -10, 0.8, -5)
+chatLog.Position = UDim2.new(0, 5, 0, 5)
+chatLog.BackgroundTransparency = 1
+chatLog.ScrollBarThickness = 4
+local logLayout = Instance.new("UIListLayout", chatLog)
+logLayout.Padding = UDim.new(0, 2)
+
+local chatInput = Instance.new("TextBox", aiFrame)
+chatInput.Size = UDim2.new(0.75, 0, 0.15, 0)
+chatInput.Position = UDim2.new(0.02, 0, 0.82, 0)
+chatInput.PlaceholderText = "Nhập lệnh hoặc code Lua..."
+chatInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+chatInput.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", chatInput).CornerRadius = UDim.new(0, 6)
+
+local sendBtn = Instance.new("TextButton", aiFrame)
+sendBtn.Size = UDim2.new(0.2, 0, 0.15, 0)
+sendBtn.Position = UDim2.new(0.78, 0, 0.82, 0)
+sendBtn.Text = "Gửi"
+sendBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+sendBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", sendBtn).CornerRadius = UDim.new(0, 6)
+
+local function logMsg(sender, txt, col)
+    local lbl = Instance.new("TextLabel", chatLog)
+    lbl.Size = UDim2.new(1, 0, 0, 20)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = sender .. ": " .. txt
+    lbl.TextColor3 = col
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    chatLog.CanvasSize = UDim2.new(0,0,0, logLayout.AbsoluteContentSize.Y + 20)
+    chatLog.CanvasPosition = Vector2.new(0, logLayout.AbsoluteContentSize.Y)
+end
+
+-- ===== CORE LOGIC FUNCTIONS =====
+
+local function toggleFly()
+    local success, result = pcall(function() -- [HARDENED FIX 2] Dùng pcall
+        if not hrp or not hum then setupCharacter() end
+        isFly = not isFly
+        
+        if isFly then
+            if not isNoGravity then Workspace.Gravity = 0 end
+            hum.PlatformStand = true
+            
+            if BV then BV:Destroy() end
+            if BG then BG:Destroy() end
+            if flyConn then flyConn:Disconnect() end
+
+            BV = Instance.new("BodyVelocity", hrp)
+            BV.MaxForce = Vector3.new(math.huge,math.huge,math.huge)
+            BG = Instance.new("BodyGyro", hrp)
+            BG.MaxTorque = Vector3.new(math.huge,math.huge,math.huge)
+            
+            flyConn = RunService.RenderStepped:Connect(function()
+                if not hrp or not hum then return end
+                BG.CFrame = Workspace.CurrentCamera.CFrame
+                local move = Vector3.new(0,0,0)
+                local cam = Workspace.CurrentCamera.CFrame
+                if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + cam.LookVector end
+                if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - cam.LookVector end
+                if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + cam.RightVector end
+                if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - cam.RightVector end
+                if UIS:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
+                if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0,1,0) end
+                if move ~= Vector3.new(0,0,0) then BV.Velocity = move.unit * flySpeed else BV.Velocity = Vector3.new(0,0,0) end
+            end)
+            return true
+        else
+            hum.PlatformStand = false
+            if not isNoGravity then Workspace.Gravity = defaultGravity end
+            if BV then BV:Destroy(); BV = nil end
+            if BG then BG:Destroy(); BG = nil end
+            if flyConn then flyConn:Disconnect(); flyConn = nil end
+            return false
+        end
+    end)
+    if not success then
+        logMsg("AI", "❌ Lỗi thực thi Fly: " .. tostring(result), Color3.fromRGB(255, 0, 0))
+    end
+end
+
+-- [CÁC HÀM KHÁC (ESP, RUN, NOCLIP,...) VẪN GIỮ NGUYÊN LOGIC]
+-- ... (Logic của toggleESP, toggleRun, toggleNoClip, toggleFullBright, toggleGodMode, flingTarget) ...
+-- (Tôi sẽ chỉ dán các hàm quan trọng tiếp theo để tránh lặp lại code dài)
+
+local function clearESP()
+    for _, line in pairs(espLines) do
+        if line.Parent then line:Destroy() end
+    end
+    espLines = {}
+end
+
+local function drawESP()
+    clearESP() 
+    if not hrp then return end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= pl and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local targetHrp = player.Character.HumanoidRootPart
+            local line = Instance.new("Part")
+            line.BrickColor = BrickColor.new("Really red")
+            line.Material = Enum.Material.ForceField 
+            line.Transparency = 0.5
+            line.CanCollide = false
+            line.Anchored = true
+            line.Parent = Workspace 
+            Debris:AddItem(line, 0.1) 
+            
+            local magnitude = (hrp.Position - targetHrp.Position).magnitude
+            local center = (hrp.Position + targetHrp.Position) / 2
+            
+            line.Size = Vector3.new(0.2, 0.2, magnitude)
+            line.CFrame = CFrame.new(center, targetHrp.Position) * CFrame.Angles(0, math.pi/2, 0)
+            
+            table.insert(espLines, line)
+        end
+    end
+end
+
+local function toggleESP()
+    isESP = not isESP
+    
+    if isESP then
+        if espLoop then espLoop:Disconnect() end
+        espLoop = RunService.RenderStepped:Connect(drawESP)
+        logMsg("System", "ESP đã bật. Đang hiển thị người chơi.", Color3.fromRGB(0, 255, 0))
+    else
+        if espLoop then espLoop:Disconnect(); espLoop = nil end
+        clearESP()
+        logMsg("System", "ESP đã tắt.", Color3.fromRGB(255, 100, 0))
+    end
+    return isESP
+end
+
+local function toggleRun()
+    if not hum then setupCharacter() end
+    isRun = not isRun
+    hum.WalkSpeed = isRun and runSpeed or defaultWalkSpeed
+    return isRun
+end
+
+local function toggleNoClip()
+    if not ch then setupCharacter() end
+    isNoClip = not isNoClip
+    
+    if isNoClip then
+        local function applyNoClip(part)
+            if part:IsA("BasePart") then part.CanCollide = false end
+        end
+        for _, v in pairs(ch:GetDescendants()) do applyNoClip(v) end
+        ch.ChildAdded:Connect(applyNoClip)
+    else
+        for _, v in pairs(ch:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = true end
+        end
+    end
+    return isNoClip
+end
+
+local function toggleFullBright()
+    isFullBright = not isFullBright
+    if isFullBright then Lighting.Brightness = 2 Lighting.Ambient = Color3.new(1,1,1)
+    else Lighting.Brightness = 1 Lighting.Ambient = Color3.fromRGB(0,0,0) end
+    return isFullBright
+end
+
+local function toggleGodMode()
+    if not hum then setupCharacter() end
+    isGod = not isGod
+    hum.MaxHealth = isGod and math.huge or 100 
+    hum.Health = isGod and hum.MaxHealth or 100 
+    return isGod
+end
+
+local function flingTarget()
+    if not hrp then setupCharacter() end
+    local target = mouse.Target
+    if target and target.Parent and target.Parent:FindFirstChild("Humanoid") and target.Parent ~= ch then
+        local targetHrp = target.Parent:FindFirstChild("HumanoidRootPart")
+        if targetHrp then
+            local flingV = Instance.new("BodyVelocity")
+            flingV.MaxForce = Vector3.new(flingF, flingF, flingF)
+            flingV.Velocity = hrp.CFrame.LookVector * (flingF / 1000)
+            flingV.Parent = targetHrp
+            Debris:AddItem(flingV, 0.2)
+            logMsg("System", "Đã Fling " .. target.Parent.Name .. "!", Color3.fromRGB(255,100,0))
+        end
+    else
+        logMsg("AI", "Không tìm thấy Humanoid để Fling.", Color3.fromRGB(255, 50, 50))
+    end
+    return nil
+end
+
+-- [PHẦN TELEPORT LIST VẪN GIỮ NGUYÊN]
+
+local PlayerListFrame = Instance.new("Frame")
+PlayerListFrame.Name = "TeleportList"
+PlayerListFrame.Size = UDim2.new(0, 200, 0, 300) 
+PlayerListFrame.Position = UDim2.new(0.5, 50, 0.5, -150)
+PlayerListFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40) 
+PlayerListFrame.BorderSizePixel = 0
+PlayerListFrame.Visible = false
+PlayerListFrame.Parent = gui
+Instance.new("UICorner", PlayerListFrame).CornerRadius = UDim.new(0, 8)
+
+local ListTitle = Instance.new("TextLabel", PlayerListFrame)
+ListTitle.Size = UDim2.new(1, 0, 0, 20)
+ListTitle.BackgroundTransparency = 1
+ListTitle.Text = "TELEPORT LIST"
+ListTitle.TextColor3 = Color3.fromRGB(0, 200, 255)
+ListTitle.Font = Enum.Font.GothamBold
+ListTitle.TextSize = 14
+
+local playerScroll = Instance.new("ScrollingFrame", PlayerListFrame)
+playerScroll.Size = UDim2.new(1, -10, 1, -25)
+playerScroll.Position = UDim2.new(0, 5, 0, 25)
+playerScroll.BackgroundTransparency = 1 
+playerScroll.ScrollBarThickness = 4
+local playerListLayout = Instance.new("UIListLayout", playerScroll)
+playerListLayout.Padding = UDim.new(0, 5)
+
+playerListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    playerScroll.CanvasSize = UDim2.new(0, 0, 0, playerListLayout.AbsoluteContentSize.Y + 10)
+end)
+
+local function teleportToPlayer(targetPlayer)
+    if not hrp then setupCharacter() end
+    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local targetHrp = targetPlayer.Character.HumanoidRootPart
+        local targetPos = targetHrp.Position
+        hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+        logMsg("System", "TP thành công đến " .. targetPlayer.Name .. ".", Color3.fromRGB(0, 255, 0))
+    else
+        logMsg("AI", "Không thể TP: " .. (targetPlayer and targetPlayer.Name or "Player") .. " không có nhân vật.", Color3.fromRGB(255, 50, 50))
+    end
+    PlayerListFrame.Visible = false
+    return nil
+end
+
+local function generatePlayerList()
+    for _, child in pairs(playerScroll:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+
+    local playerList = Players:GetPlayers()
+    table.sort(playerList, function(a, b) return a.Name < b.Name end)
+    
+    for _, player in pairs(playerList) do
+        if player ~= pl then
+            local pBtn = Instance.new("TextButton", playerScroll)
+            pBtn.Name = player.Name
+            pBtn.Size = UDim2.new(1, -5, 0, 25)
+            pBtn.Text = player.Name
+            pBtn.Font = Enum.Font.Gotham
+            pBtn.TextColor3 = Color3.new(1,1,1)
+            pBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+            pBtn.TextSize = 12
+            Instance.new("UICorner", pBtn).CornerRadius = UDim.new(0, 4)
+            
+            pBtn.MouseButton1Click:Connect(function()
+                teleportToPlayer(player)
+            end)
+        end
+    end
+end
+
+local function toggleTPList()
+    PlayerListFrame.Visible = not PlayerListFrame.Visible
+    if PlayerListFrame.Visible then
+        generatePlayerList()
+        logMsg("System", "Danh sách người chơi đã được tạo. Chọn người để TP.", Color3.fromRGB(0, 200, 255))
+    end
+    return nil
+end
+
+
+-- [ĐĂNG KÝ HÀM (VẪN GIỮ NGUYÊN)]
+
+currentFunctions["toggleFly"] = toggleFly
+currentFunctions["toggleESP"] = toggleESP
+currentFunctions["toggleRun"] = toggleRun
+currentFunctions["toggleNoClip"] = toggleNoClip
+currentFunctions["toggleFullBright"] = toggleFullBright
+currentFunctions["toggleGodMode"] = toggleGodMode
+currentFunctions["toggleTPList"] = toggleTPList 
+currentFunctions["flingTarget"] = flingTarget
+
+
+-- [TẠO NÚT (VẪN GIỮ NGUYÊN)]
+
+createBtn("Fly (Bay)", currentFunctions.toggleFly)
+createBtn("Speed Run", currentFunctions.toggleRun)
+createBtn("GodMode", currentFunctions.toggleGodMode)
+createBtn("NoClip", currentFunctions.toggleNoClip)
+createBtn("FullBright (Sáng)", currentFunctions.toggleFullBright)
+createBtn("ESP (Nhìn Xuyên)", currentFunctions.toggleESP)
+createBtn("Teleport List (TP)", currentFunctions.toggleTPList) 
+createBtn("Click Fling", currentFunctions.flingTarget)
+
+-- [HỆ THỐNG MASTERPATCH & DEV PANEL (GIỮ NGUYÊN)]
+-- ... (Code Dev Panel và Logic AI/Autocorrect không thay đổi) ...
+
+local function updateScriptFunction(funcName, newCode)
+    if not currentFunctions[funcName] then
+        return false, "Lỗi: Không tìm thấy hàm để thay thế: " .. funcName
+    end
+    
+    local success, newFunc = pcall(loadstring("return " .. newCode))
+    
+    if not success then
+        return false, "Lỗi cú pháp Lua trong code mới: " .. tostring(newFunc)
+    end
+    
+    currentFunctions[funcName] = newFunc
+    
+    if funcName == "toggleFly" and isFly then 
+        isFly = false 
+        if flyConn then flyConn:Disconnect(); flyConn = nil end
+        if BV then BV:Destroy(); BV = nil end
+        if BG then BG:Destroy(); BG = nil end
+        Workspace.Gravity = defaultGravity 
+        logMsg("AI", "Fly đã tắt. Code mới sẽ được áp dụng khi bật lại.", Color3.fromRGB(255, 150, 0))
+    end
+    
+    return true, "✅ Đã thay thế logic hàm **" .. funcName .. "** thành công. Code mới đã được áp dụng."
+end
+
+local devPanel = Instance.new("Frame")
+devPanel.Name = "DevPanel"
+devPanel.Size = UDim2.new(0, 500, 0, 300) 
+devPanel.Position = UDim2.new(0.5, -250, 0.5, -150)
+devPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 30) 
+devPanel.BorderSizePixel = 0
+devPanel.Visible = false
+devPanel.Parent = gui
+Instance.new("UICorner", devPanel).CornerRadius = UDim.new(0, 8)
+makeDraggable(devPanel)
+
+local devTitle = Instance.new("TextLabel", devPanel)
+devTitle.Size = UDim2.new(1, 0, 0, 20)
+devTitle.Position = UDim2.new(0, 0, 0, 5)
+devTitle.BackgroundTransparency = 1
+devTitle.Text = "⚡ MASTERPATCH CODE EDITOR ⚡"
+devTitle.TextColor3 = Color3.fromRGB(0, 255, 255)
+devTitle.Font = Enum.Font.GothamBold
+devTitle.TextSize = 14
+
+local codeInput = Instance.new("TextBox", devPanel)
+codeInput.MultiLine = true
+codeInput.TextWrapped = true
+codeInput.TextXAlignment = Enum.TextXAlignment.Left
+codeInput.TextYAlignment = Enum.TextYAlignment.Top
+codeInput.Size = UDim2.new(1, -20, 0.7, 0)
+codeInput.Position = UDim2.new(0, 10, 0, 30)
+codeInput.PlaceholderText = "Dán code hàm Lua mới (Ví dụ: function() print('hello') return true end) hoặc code thường..."
+codeInput.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+codeInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+codeInput.Font = Enum.Font.Code
+codeInput.TextSize = 12
+Instance.new("UICorner", codeInput).CornerRadius = UDim.new(0, 6)
+
+local funcNameInput = Instance.new("TextBox", devPanel)
+funcNameInput.Size = UDim2.new(0.45, 0, 0.1, 0)
+funcNameInput.Position = UDim2.new(0, 10, 0.75, 50)
+funcNameInput.PlaceholderText = "Tên Hàm (vd: toggleFly)"
+funcNameInput.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+funcNameInput.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", funcNameInput).CornerRadius = UDim.new(0, 6)
+
+local godModeBtn = Instance.new("TextButton", devPanel)
+godModeBtn.Size = UDim2.new(0.45, 0, 0.1, 0)
+godModeBtn.Position = UDim2.new(0, 260, 0.75, 50)
+godModeBtn.Text = "AI GOD MODE"
+godModeBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0) 
+godModeBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", godModeBtn).CornerRadius = UDim.new(0, 6)
+
+godModeBtn.MouseButton1Click:Connect(function()
+    isAIGodMode = not isAIGodMode
+    if isAIGodMode then
+        godModeBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+        logMsg("AI", "🔓 AI GOD MODE: Đã cấp quyền thực thi code tối cao.", Color3.fromRGB(0, 255, 0))
+    else
+        godModeBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+        logMsg("AI", "🔒 AI GOD MODE: Đã thu hồi quyền tối cao.", Color3.fromRGB(255, 0, 0))
+    end
+end)
+
+local applyPatchBtn = Instance.new("TextButton", devPanel)
+applyPatchBtn.Size = UDim2.new(0.96, 0, 0.1, 0)
+applyPatchBtn.Position = UDim2.new(0, 10, 0.85, 50)
+applyPatchBtn.Text = "⚡ APPLY PATCH (Thay thế Hàm) ⚡"
+applyPatchBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
+applyPatchBtn.TextColor3 = Color3.new(0,0,0)
+Instance.new("UICorner", applyPatchBtn).CornerRadius = UDim.new(0, 6)
+
+applyPatchBtn.MouseButton1Click:Connect(function()
+    local funcName = funcNameInput.Text:gsub("%s+", "")
+    local code = codeInput.Text
+    
+    if not currentFunctions[funcName] then
+        logMsg("AI", "❌ Lỗi: Tên hàm không hợp lệ ("..funcName.."). Các hàm có thể thay thế: toggleFly, toggleRun, toggleTPList, v.v.", Color3.fromRGB(255, 50, 50))
+        return
+    end
+    
+    if not code or code:len() < 10 then
+        logMsg("AI", "❌ Lỗi: Code quá ngắn hoặc trống. Vui lòng dán toàn bộ hàm (ví dụ: function() ... end).", Color3.fromRGB(255, 50, 50))
+        return
+    end
+    
+    local success, msg = updateScriptFunction(funcName, code)
+    if success then
+        logMsg("AI", msg, Color3.fromRGB(0, 255, 0))
+    else
+        logMsg("AI", msg, Color3.fromRGB(255, 0, 0))
+    end
+end)
+
+
+local devPanelBtn 
+local function createDevControls()
+    if devPanelBtn then return end 
+    
+    devPanelBtn = createBtn("Developer Panel", function()
+        devPanel.Visible = not devPanel.Visible
+        return nil
+    end)
+    devPanelBtn.Parent = scroll
+    devPanelBtn.BackgroundColor3 = Color3.fromRGB(100, 0, 200) 
+    
+    if isAIGodMode then godModeBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0) end
+end
+
+
+local function processAI(txt)
+    local t = txt:lower()
+    
+    if t == SECRET_KEY then
+        isDeveloperMode = true
+        createDevControls() 
+        return "🔑 [KEY ACCEPTED] ✅ Chế độ Nhà phát triển đã được kích hoạt. Bạn có thể mở Developer Panel để thay đổi Code Nóng (Hot-patch) hoặc cấp quyền God Mode cho AI."
+    end
+    
+    if isDeveloperMode and (isAIGodMode or t:find("game.") or t:find("pl.") or t:find("workspace.") or t:find("local ") or t:find("function")) then
+        local codeToExecute = (isAIGodMode and txt) or txt
+        
+        local success, result = pcall(loadstring(codeToExecute))
+        if success then
+            local res_str = tostring(result)
+            if res_str and res_str ~= "nil" and res_str ~= "true" then 
+                 return "Code chạy thành công. Kết quả: " .. res_str 
+            else
+                return "Code chạy thành công."
+            end
+        else
+            return "❌ Lỗi thực thi code Lua: " .. tostring(result)
+        end
+    end
+    
+    local parts = {}
+    for word in t:gmatch("%S+") do table.insert(parts, word) end
+    local command = parts[1] or ""
+    local target = parts[2]
+    local value = tonumber(parts[3])
+    
+    if command == "bật" or command == "tắt" then
+        local state = (command == "bật")
+        local featureMap = {
+            ["fly"] = "Fly (Bay)", ["bay"] = "Fly (Bay)",
+            ["run"] = "Speed Run", ["speed"] = "Speed Run",
+            ["god"] = "GodMode", ["bat_tu"] = "GodMode",
+            ["clip"] = "NoClip", ["noclip"] = "NoClip",
+            ["bright"] = "FullBright (Sáng)", ["sang"] = "FullBright (Sáng)",
+            ["esp"] = "ESP (Nhìn Xuyên)"
+        }
+        local featureName = featureMap[target]
+        
+        if featureName and buttons[featureName] then
+            local current_state = buttons[featureName].state
+            if current_state ~= state then
+                buttons[featureName].btn:Fire()
+                return (state and "Đã bật " or "Đã tắt ") .. featureName .. " theo lệnh."
+            else
+                return featureName .. " đã ở trạng thái đó rồi. Thử lệnh khác nhé."
+            end
+        else
+            return "Tôi xin lỗi, tôi không hiểu tính năng " .. (target or "") .. ". Bạn muốn bật/tắt cái gì?"
+        end
+    
+    elseif command == "set" then
+        if not value then return "Giá trị set không hợp lệ. Vui lòng nhập một số." end
+        if target == "fly" or target == "bay" then
+            flySpeed = math.max(10, value)
+            if isFly then buttons["Fly (Bay)"].func() buttons["Fly (Bay)"].func() end
+            return "Đã set Fly Speed thành " .. flySpeed .. " (Áp dụng ngay nếu đang bay)."
+        elseif target == "speed" or target == "run" then
+            runSpeed = math.max(16, value)
+            if isRun then hum.WalkSpeed = runSpeed end
+            return "Đã set Run Speed thành " .. runSpeed .. " (Áp dụng ngay nếu đang chạy)."
+        elseif target == "fling" then
+            flingF = math.max(1000, value)
+            return "Đã set Fling Force thành " .. flingF .. "."
+        else
+            return "Tôi không thể set giá trị đó. Chỉ set được [fly, speed, fling]."
+        end
+    
+    elseif t:find("sửa fly") or t:find("fix fly") or t:find("bay bị lỗi") then
+        if not hrp or not hum then return "Lỗi: Không tìm thấy nhân vật để chẩn đoán." end
+        
+        local diagnostics = {}
+        local fixes_needed = false
+        
+        if Workspace.Gravity ~= 0 then
+            table.insert(diagnostics, "Gravity: Cao (" .. tostring(Workspace.Gravity) .. ")")
+            fixes_needed = true
+        else
+            table.insert(diagnostics, "Gravity: OK (0)")
+        end
+
+        if hum and not hum.PlatformStand and isFly then
+            table.insert(diagnostics, "PlatformStand: Tắt")
+            fixes_needed = true
+        elseif hum and hum.PlatformStand and not isFly then
+             table.insert(diagnostics, "PlatformStand: Bị kẹt (Đang bật khi chưa Fly)")
+             fixes_needed = true
+        end
+
+        if not hrp:FindFirstChild("BodyVelocity") and isFly then
+            table.insert(diagnostics, "BodyVelocity: Mất")
+            fixes_needed = true
+        end
+
+        local response = "⚡ AI Diagnostic Report:\n" .. table.concat(diagnostics, ", ")
+
+        if fixes_needed then
+            if isAIGodMode then
+                local fix_code = [[
+                    Workspace.Gravity = 0; 
+                    if hum then hum.PlatformStand = true end; 
+                    if not hrp:FindFirstChild("BodyVelocity") and isFly then 
+                        local bv = Instance.new("BodyVelocity", hrp);
+                        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge);
+                        bv.Velocity = Vector3.new(0, 0, 0);
+                        print("BodyVelocity Re-applied.") 
+                    end
+                ]]
+                local success, err = pcall(loadstring(fix_code))
+                if success then
+                    return response .. "\n" .. "🛠️ **AUTOCORRECT:** Đã chạy lệnh sửa lỗi cấp cao. Thử bật/tắt Fly lại!"
+                else
+                    return response .. "\n" .. "❌ Lỗi khi chạy lệnh sửa lỗi: " .. tostring(err) .. ". Cần xem xét lại code."
+                end
+            else
+                return response .. "\n" .. "🛠️ **SỬA CHỮA CẦN THIẾT:** Để AI tự động sửa lỗi, bạn cần BẬT **AI GOD MODE** trong Developer Panel. Sau đó gõ lại lệnh."
+            end
+        else
+            return response .. "\n" .. "✅ **Hệ thống Fly cơ bản có vẻ ổn.** Vấn đề có thể do lag hoặc lỗi game khác."
+        end
+    
+    elseif t:find("vị trí") or t:find("pos") then
+        local p = hrp and hrp.Position or Vector3.new(0,0,0)
+        return string.format("Vị trí hiện tại của bạn là X:%.0f, Y:%.0f, Z:%.0f. Có cần tôi TP bạn đi đâu không?", p.X, p.Y, p.Z)
+    elseif t:find("chào") or t:find("hello") then
+        return "Xin chào! Tôi là V8 Autocorrect AI. Tôi đã sẵn sàng nhận code vá lỗi và sửa lỗi Fly."
+    elseif t == "help" then
+        return "Lệnh AI: set [fly/speed/fling], bật/tắt [tính năng]. NEW: gõ 'sửa fly' để chạy kiểm tra lỗi tự động."
+    else 
+        return "Tôi không hiểu lệnh này. Vui lòng dùng lệnh điều khiển (bật/tắt) hoặc code Lua (sau khi bật Dev Mode)."
+    end
+end
+
+local function sendChat()
+    local txt = chatInput.Text
+    if txt ~= "" then
+        logMsg("Me", txt, Color3.fromRGB(255,255,0))
+        chatInput.Text = ""
+        wait(0.2)
+        local ans = processAI(txt)
+        logMsg("AI", ans, Color3.fromRGB(0,200,255))
+    end
+end
+
+sendBtn.MouseButton1Click:Connect(sendChat)
+chatInput.FocusLost:Connect(function(enter) if enter then sendChat() end end)
+
+-- Khởi động thông báo
+logMsg("AI", "V8 AI System Hardened. Kiểm tra nút V8 và nhấn F9 nếu vẫn không thấy gì.", Color3.fromRGB(0,255,0))
